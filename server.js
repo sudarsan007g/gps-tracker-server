@@ -4,17 +4,17 @@ const admin = require("firebase-admin");
 const app = express();
 app.use(express.json());
 
-// ✅ Read Firebase key from Render Environment Variable
+// 🔐 Read Firebase key from environment (Render)
 let serviceAccount;
 
 try {
   serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
 } catch (err) {
-  console.error("❌ Firebase key error:", err);
+  console.error("❌ Failed to parse FIREBASE_KEY");
   process.exit(1);
 }
 
-// ✅ Initialize Firebase
+// 🔥 Initialize Firebase
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
   databaseURL: "https://laptop-tracker-ed5f3-default-rtdb.firebaseio.com/"
@@ -22,17 +22,18 @@ admin.initializeApp({
 
 const db = admin.database();
 
-// ✅ Health check (important for Render)
+// ✅ Health check
 app.get("/", (req, res) => {
   res.send("OK");
 });
 
-// ✅ Receive GPS data from ESP32
+// 📡 ESP32 → Send GPS data
 app.post("/update", async (req, res) => {
   try {
     const data = req.body;
 
-    if (!data || !data.lat || !data.lon) {
+    // Basic validation
+    if (!data || data.lat === undefined || data.lon === undefined) {
       return res.status(400).send("Invalid data");
     }
 
@@ -45,27 +46,39 @@ app.post("/update", async (req, res) => {
       time: Date.now()
     });
 
-    console.log("📍 Data saved:", data);
+    console.log("📍 Data received:", data);
 
     res.send("OK");
   } catch (err) {
-    console.error("❌ Update error:", err);
+    console.error("❌ Error saving data:", err);
     res.status(500).send("ERROR");
   }
 });
 
-// ✅ Send control command to ESP32
+// 📲 App → Control ESP32
 app.get("/control", async (req, res) => {
   try {
-    const snap = await db.ref("device/control").once("value");
-    res.json(snap.val() || { tracking: false });
+    const snapshot = await db.ref("device/control").once("value");
+    res.json(snapshot.val() || { tracking: false });
   } catch (err) {
     console.error("❌ Control error:", err);
     res.status(500).send("ERROR");
   }
 });
 
-// ✅ Use dynamic port (RENDER FIX)
+// 🔁 Optional: reset command after reading
+app.post("/control", async (req, res) => {
+  try {
+    const command = req.body;
+    await db.ref("device/control").set(command);
+    res.send("Command updated");
+  } catch (err) {
+    console.error("❌ Control set error:", err);
+    res.status(500).send("ERROR");
+  }
+});
+
+// 🚀 Start server (Render uses dynamic port)
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
